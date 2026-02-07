@@ -1,74 +1,84 @@
+from __future__ import annotations
+
 import os
+from typing import Any, Dict
 
 import pandas as pd
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
-from ml.data import apply_label, process_data
+from ml.data import process_data
 from ml.model import inference, load_model
 
-# DO NOT MODIFY
-class Data(BaseModel):
-    age: int = Field(..., example=37)
-    workclass: str = Field(..., example="Private")
-    fnlgt: int = Field(..., example=178356)
-    education: str = Field(..., example="HS-grad")
-    education_num: int = Field(..., example=10, alias="education-num")
-    marital_status: str = Field(
-        ..., example="Married-civ-spouse", alias="marital-status"
-    )
-    occupation: str = Field(..., example="Prof-specialty")
-    relationship: str = Field(..., example="Husband")
-    race: str = Field(..., example="White")
-    sex: str = Field(..., example="Male")
-    capital_gain: int = Field(..., example=0, alias="capital-gain")
-    capital_loss: int = Field(..., example=0, alias="capital-loss")
-    hours_per_week: int = Field(..., example=40, alias="hours-per-week")
-    native_country: str = Field(..., example="United-States", alias="native-country")
+MODEL_DIR = "model"
+MODEL_PATH = os.path.join(MODEL_DIR, "model.pkl")
+ENCODER_PATH = os.path.join(MODEL_DIR, "encoder.pkl")
+LB_PATH = os.path.join(MODEL_DIR, "lb.pkl")
 
-path = None # TODO: enter the path for the saved encoder 
-encoder = load_model(path)
+CATEGORICAL_FEATURES = [
+    "workclass",
+    "education",
+    "marital-status",
+    "occupation",
+    "relationship",
+    "race",
+    "sex",
+    "native-country",
+]
+LABEL = "salary"
 
-path = None # TODO: enter the path for the saved model 
-model = load_model(path)
+app = FastAPI(title="Census Income Classifier")
 
-# TODO: create a RESTful API using FastAPI
-app = None # your code here
 
-# TODO: create a GET on the root giving a welcome message
+class CensusRecord(BaseModel):
+    age: int
+    workclass: str
+    fnlgt: int
+    education: str
+    education_num: int = Field(..., alias="education-num")
+    marital_status: str = Field(..., alias="marital-status")
+    occupation: str
+    relationship: str
+    race: str
+    sex: str
+    capital_gain: int = Field(..., alias="capital-gain")
+    capital_loss: int = Field(..., alias="capital-loss")
+    hours_per_week: int = Field(..., alias="hours-per-week")
+    native_country: str = Field(..., alias="native-country")
+
+    class Config:
+        populate_by_name = True
+
+
+def _load_artifacts() -> tuple[Any, Any, Any]:
+    model = load_model(MODEL_PATH)
+    encoder = load_model(ENCODER_PATH)
+    lb = load_model(LB_PATH)
+    return model, encoder, lb
+
+
+MODEL, ENCODER, LB = _load_artifacts()
+
+
 @app.get("/")
-async def get_root():
-    """ Say hello!"""
-    # your code here
-    pass
+def root() -> Dict[str, str]:
+    return {"message": "Hello from the API!"}
 
 
-# TODO: create a POST on a different path that does model inference
-@app.post("/data/")
-async def post_inference(data: Data):
-    # DO NOT MODIFY: turn the Pydantic model into a dict.
-    data_dict = data.dict()
-    # DO NOT MODIFY: clean up the dict to turn it into a Pandas DataFrame.
-    # The data has names with hyphens and Python does not allow those as variable names.
-    # Here it uses the functionality of FastAPI/Pydantic/etc to deal with this.
-    data = {k.replace("_", "-"): [v] for k, v in data_dict.items()}
-    data = pd.DataFrame.from_dict(data)
+@app.post("/predict")
+def predict(record: CensusRecord) -> Dict[str, str]:
+    row = record.model_dump(by_alias=True)
+    df = pd.DataFrame([row])
 
-    cat_features = [
-        "workclass",
-        "education",
-        "marital-status",
-        "occupation",
-        "relationship",
-        "race",
-        "sex",
-        "native-country",
-    ]
-    data_processed, _, _, _ = process_data(
-        # your code here
-        # use data as data input
-        # use training = False
-        # do not need to pass lb as input
+    X, _, _, _ = process_data(
+        df,
+        categorical_features=CATEGORICAL_FEATURES,
+        label=None,
+        training=False,
+        encoder=ENCODER,
+        lb=LB,
     )
-    _inference = None # your code here to predict the result using data_processed
-    return {"result": apply_label(_inference)}
+
+    pred = inference(MODEL, X)[0]
+    label = LB.classes_[int(pred)]
+    return {"prediction": str(label)}
