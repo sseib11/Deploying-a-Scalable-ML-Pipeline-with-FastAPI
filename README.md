@@ -10,6 +10,7 @@ Working in a command line environment is recommended for ease of use with git an
 * Connect your local git repo to GitHub.
 * Setup GitHub Actions on your repo. You can use one of the pre-made GitHub Actions if at a minimum it runs pytest and flake8 on push and requires both to pass without error.
     * Make sure you set up the GitHub Action to have the same version of Python as you used in development.
+GitHub Repository: https://github.com/sseib11/Deploying-a-Scalable-ML-Pipeline-with-FastAPI
 
 # Data
 * Download census.csv and commit it to dvc.
